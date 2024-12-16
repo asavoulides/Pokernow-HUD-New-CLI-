@@ -1,13 +1,43 @@
 import argparse
 import pandas as pd
 from collections import defaultdict
-from os import listdir
+from os import listdir, remove
 from os.path import isfile, join
+import hashlib
 from rich.console import Console
 from rich.progress import track
 
 # Initialize Rich console
 console = Console()
+
+
+def calculate_file_hash(file_path):
+    """Calculate the hash of a file to detect duplicates."""
+    hasher = hashlib.md5()
+    with open(file_path, "rb") as file:
+        buf = file.read()
+        hasher.update(buf)
+    return hasher.hexdigest()
+
+
+def remove_duplicate_files(path_to_logs):
+    """Remove duplicate files from the logs directory based on file content."""
+    files = [
+        join(path_to_logs, f)
+        for f in listdir(path_to_logs)
+        if isfile(join(path_to_logs, f))
+    ]
+    seen_hashes = {}
+    for file_path in files:
+        file_hash = calculate_file_hash(file_path)
+        if file_hash in seen_hashes:
+            console.print(
+                f"[bold red]Duplicate detected:[/bold red] {file_path} (removed)"
+            )
+            remove(file_path)
+        else:
+            seen_hashes[file_hash] = file_path
+    console.print("[bold green]Duplicate file removal completed.[/bold green]")
 
 
 def load_logs(path_to_logs):
@@ -18,6 +48,13 @@ def load_logs(path_to_logs):
         df = pd.read_csv(join(path_to_logs, file))
         logs.extend(reversed(df["entry"]))
     return logs
+
+
+def extract_player_id(log):
+    """Extract and return the unique player ID from a log entry."""
+    if " @" in log:
+        return log[1 : log.index(" @")].lower()
+    return log.split()[0].strip('"').lower()
 
 
 def parse_hands(logs):
@@ -70,11 +107,7 @@ def process_hands(hands):
             if street == "preflop":
                 for action in actions:
                     if action in log:
-                        player = (
-                            log[1 : log.index(" @")].lower()
-                            if " @" in log
-                            else log.split()[0].strip('"').lower()
-                        )
+                        player = extract_player_id(log)
                         if raise_count == 1:
                             possible_3bettors.add(player)
                         if player not in hand_preflop:
@@ -93,11 +126,7 @@ def process_hands(hands):
             if street == "flop":
                 for action in flop_actions:
                     if action in log:
-                        player = (
-                            log[1 : log.index(" @")].lower()
-                            if " @" in log
-                            else log.split()[0].strip('"').lower()
-                        )
+                        player = extract_player_id(log)
                         if player == preflop_raiser and (
                             action == "bets" or action == "checks"
                         ):
@@ -144,69 +173,61 @@ def calculate_stats(preflop, threebets, cbets, can_3bet):
                 threebet = round(100 * threebets[player]["raises"] / can_3bet[player])
             else:
                 threebet = 0
-            got_threebet = threebets[player]["calls"] + threebets[player]["folds"]
-            fold_threebet = (
-                round(100 * threebets[player]["folds"] / got_threebet)
-                if got_threebet > 0
-                else 0
-            )
         else:
             threebet = 0
-            fold_threebet = 0
 
-        if player in cbets:
-            cbet_total = cbets[player]["bets"] + cbets[player]["checks"]
-            cbet = (
-                round(100 * cbets[player]["bets"] / cbet_total) if cbet_total > 0 else 0
-            )
-            face_cbet = (
-                cbets[player]["calls"]
-                + cbets[player]["raises"]
-                + cbets[player]["folds"]
-            )
-            fold_cbet = (
-                round(100 * cbets[player]["folds"] / face_cbet) if face_cbet > 0 else 0
-            )
-        else:
-            cbet = 0
-            fold_cbet = 0
+        # Calculate Tightness Score
+        tightness_score = (
+            (1 - vpip / 100) * 0.5 + (1 - pfr / 100) * 0.3 + (1 - threebet / 100) * 0.2
+        )
+        tightness_score = round(tightness_score * 100, 1)
 
         stats[player] = {
+            "Total Hands": num_hands,
             "VPIP (%)": vpip,
             "PFR (%)": pfr,
             "3Bet (%)": threebet,
-            "Fold to 3Bet (%)": fold_threebet,
-            "CBet (%)": cbet,
-            "Fold to CBet (%)": fold_cbet,
+            "Tightness Score": tightness_score,
         }
     return stats
 
 
-def display_stats(stats):
-    """Display player statistics in a styled table."""
+def display_stats(stats, numbered=False):
+    """Display player statistics in a styled table, sorted by Tightness Score."""
     from rich.table import Table
 
-    table = Table(title="Player Statistics")
-    table.add_column("Player", justify="left", style="cyan")
+    # Sort stats by Tightness Score
+    sorted_stats = dict(sorted(stats.items(), key=lambda x: x[1]["Tightness Score"]))
+
+    table = Table(title="Player Statistics (Sorted by Tightness Score)")
+    table.add_column("Player ID", justify="left", style="cyan")
+    if numbered:
+        table.add_column("Number", justify="center")
+    table.add_column("Total Hands", justify="center")
     table.add_column("VPIP (%)", justify="center")
     table.add_column("PFR (%)", justify="center")
     table.add_column("3Bet (%)", justify="center")
-    table.add_column("Fold to 3Bet (%)", justify="center")
-    table.add_column("CBet (%)", justify="center")
-    table.add_column("Fold to CBet (%)", justify="center")
+    table.add_column("Tightness Score", justify="center")
 
-    for player, stat in stats.items():
-        table.add_row(
+    for idx, (player, stat) in enumerate(sorted_stats.items(), start=1):
+        row = [
             player,
+            str(stat["Total Hands"]),
             str(stat["VPIP (%)"]),
             str(stat["PFR (%)"]),
             str(stat["3Bet (%)"]),
-            str(stat["Fold to 3Bet (%)"]),
-            str(stat["CBet (%)"]),
-            str(stat["Fold to CBet (%)"]),
-        )
+            str(stat["Tightness Score"]),
+        ]
+        if numbered:
+            row.insert(1, str(idx))
+        table.add_row(*row)
 
     console.print(table)
+
+    if numbered:
+        return {
+            str(idx): player for idx, player in enumerate(sorted_stats.keys(), start=1)
+        }
 
 
 def main():
@@ -214,17 +235,31 @@ def main():
     parser.add_argument(
         "--logs",
         type=str,
-        required=True,
+        default="C:\\Users\\alexa\\PokerNow-HUD-1\\logs",
         help="Path to the directory containing log files",
     )
     args = parser.parse_args()
 
     console.print("[bold green]Starting Poker Statistics Processor...[/bold green]")
+    remove_duplicate_files(args.logs)
     logs = load_logs(args.logs)
     hands = parse_hands(logs)
     preflop, threebets, cbets, can_3bet = process_hands(hands)
     stats = calculate_stats(preflop, threebets, cbets, can_3bet)
-    display_stats(stats)
+
+    player_map = display_stats(stats, numbered=True)
+    console.print(
+        "[bold yellow]Enter player numbers separated by commas to filter the chart:[/bold yellow]"
+    )
+    selected = input(">> ").split(",")
+
+    selected_stats = {
+        player_map[num.strip()]: stats[player_map[num.strip()]]
+        for num in selected
+        if num.strip() in player_map
+    }
+    console.print("[bold green]Filtered Results:[/bold green]")
+    display_stats(selected_stats)
 
 
 if __name__ == "__main__":
