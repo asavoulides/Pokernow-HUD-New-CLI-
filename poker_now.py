@@ -235,7 +235,7 @@ def main():
     parser.add_argument(
         "--logs",
         type=str,
-        default="C:\\Users\\alexa\\PokerNow-HUD-1\\logs",
+        default="C:\\Users\\alexa\\OneDrive\\Desktop\\Folders\\Pokernow-HUD-New-CLI-\\logs",
         help="Path to the directory containing log files",
     )
     args = parser.parse_args()
