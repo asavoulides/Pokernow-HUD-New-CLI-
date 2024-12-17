@@ -16,3 +16,8 @@ the possibility of a cold 4 bet
 **Cbet**: How often the player bets the flop, given they were the preflop aggressor. Applies to multiway pots, which may skew results. If a player donks into the aggressor, the cbet stat will not be affected for that hand
 
 **Fold to Cbet**: How often the player folds to a cbet. Applies to multiway pots, which may skew results. If a player raises the cbet, the fold to cbet stat is not affected for that hand
+
+
+# Usage
+Update Logs with Log files from Pokernow game (download logs)
+Use the --path argument when executing code, or update the default path in the main function.
