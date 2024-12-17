@@ -14,7 +14,7 @@ from rich import box
 # Initialize Rich console
 console = Console()
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 
 def calculate_file_hash(file_path):
@@ -198,7 +198,6 @@ def process_hands(hands):
             can_3bet[player] += 1
 
         # Showdown calculation:
-        # A showdown occurs if at least one player shows their cards.
         if players_shown:
             showdown_occurred = True
 
@@ -207,8 +206,7 @@ def process_hands(hands):
             for player in players_shown:
                 showdowns[player] += 1
 
-            # Players who both showed and collected after showing won the showdown
-            # If multiple players collected (split pot) each one that showed also gets a showdown win.
+            # Winners: showed + collected
             for player in players_shown:
                 if player in players_collected:
                     showdown_wins[player] += 1
@@ -217,7 +215,15 @@ def process_hands(hands):
 
 
 def calculate_stats(preflop, threebets, cbets, can_3bet, showdowns, showdown_wins):
-    """Calculate and return player statistics, including showdown win percentage."""
+    """
+    Calculate and return player statistics.
+
+    Updated:
+    - Remove Showdowns and Showdowns Won columns from final stats.
+    - Include Showdown Win (%) only.
+    - Include Went to Showdown (%) = (Showdowns / Total Hands) * 100
+    - Tightness Score at the far right.
+    """
     stats = {}
     for player, player_actions in preflop.items():
         num_hands = sum(player_actions.values())
@@ -246,23 +252,20 @@ def calculate_stats(preflop, threebets, cbets, can_3bet, showdowns, showdown_win
         )
         tightness_score = round(tightness_score * 100, 1)
 
-        # Calculate Showdown Win %
+        # Showdown calculations
         player_showdowns = showdowns[player] if player in showdowns else 0
         player_showdown_wins = showdown_wins[player] if player in showdown_wins else 0
-        if player_showdowns > 0:
-            sd_win_pct = round((player_showdown_wins / player_showdowns) * 100, 2)
-        else:
-            sd_win_pct = 0.0
+        showdown_win_pct = round((player_showdown_wins / player_showdowns) * 100, 2) if player_showdowns > 0 else 0.0
+        went_to_showdown_pct = round((player_showdowns / num_hands) * 100, 2) if num_hands > 0 else 0.0
 
         stats[player] = {
             "Total Hands": num_hands,
             "VPIP (%)": vpip,
             "PFR (%)": pfr,
             "3Bet (%)": threebet,
+            "Went to Showdown (%)": went_to_showdown_pct,
+            "Showdown Win (%)": showdown_win_pct,
             "Tightness Score": tightness_score,
-            "Showdown Win (%)": sd_win_pct,
-            "Showdowns": player_showdowns,
-            "Showdowns Won": player_showdown_wins,
         }
     return stats
 
@@ -273,14 +276,18 @@ def display_stats(stats, numbered=False, sort_by="Tightness Score"):
         console.print("[bold red]No statistics to display.[/bold red]")
         return {}
 
+    # Ensure sort_by is a valid key
     if sort_by not in stats[next(iter(stats))].keys():
         sort_by = "Tightness Score"
 
+    # Sort
     sorted_stats = dict(sorted(stats.items(), key=lambda x: x[1][sort_by]))
 
     # Highlight top 3 players in different colors based on chosen sort metric
     rank_colors = ["bold green", "bold cyan", "bold magenta"]
 
+    # Columns order changed:
+    # Player ID, (Number?), Total Hands, VPIP (%), PFR (%), 3Bet (%), Went to Showdown (%), Showdown Win (%), Tightness Score
     table = Table(
         title=f"Player Statistics (Sorted by {sort_by})",
         box=box.MINIMAL_DOUBLE_HEAD,
@@ -293,10 +300,9 @@ def display_stats(stats, numbered=False, sort_by="Tightness Score"):
     table.add_column("VPIP (%)", justify="center", style="cyan")
     table.add_column("PFR (%)", justify="center", style="cyan")
     table.add_column("3Bet (%)", justify="center", style="cyan")
-    table.add_column("Tightness Score", justify="center", style="cyan")
+    table.add_column("Went to Showdown (%)", justify="center", style="cyan")
     table.add_column("Showdown Win (%)", justify="center", style="cyan")
-    table.add_column("Showdowns", justify="center", style="cyan")
-    table.add_column("Showdowns Won", justify="center", style="cyan")
+    table.add_column("Tightness Score", justify="center", style="cyan")
 
     for idx, (player, stat) in enumerate(sorted_stats.items(), start=1):
         row_style = rank_colors[idx - 1] if idx <= 3 else None
@@ -306,10 +312,9 @@ def display_stats(stats, numbered=False, sort_by="Tightness Score"):
             str(stat["VPIP (%)"]),
             str(stat["PFR (%)"]),
             str(stat["3Bet (%)"]),
-            str(stat["Tightness Score"]),
+            str(stat["Went to Showdown (%)"]),
             str(stat["Showdown Win (%)"]),
-            str(stat["Showdowns"]),
-            str(stat["Showdowns Won"]),
+            str(stat["Tightness Score"]),
         ]
         if numbered:
             row.insert(1, str(idx))
@@ -332,8 +337,9 @@ def print_overview_info(hands, stats):
         avg_pfr = round(sum(s["PFR (%)"] for s in stats.values()) / len(stats), 2)
         avg_3bet = round(sum(s["3Bet (%)"] for s in stats.values()) / len(stats), 2)
         avg_sd_win = round(sum(s["Showdown Win (%)"] for s in stats.values()) / len(stats), 2)
+        avg_wtsd = round(sum(s["Went to Showdown (%)"] for s in stats.values()) / len(stats), 2)
     else:
-        avg_vpip = avg_pfr = avg_3bet = avg_sd_win = 0
+        avg_vpip = avg_pfr = avg_3bet = avg_sd_win = avg_wtsd = 0
 
     info_text = (
         f"[bold cyan]Overview:[/bold cyan]\n"
@@ -342,6 +348,7 @@ def print_overview_info(hands, stats):
         f"[yellow]Average VPIP:[/yellow] {avg_vpip}%\n"
         f"[yellow]Average PFR:[/yellow] {avg_pfr}%\n"
         f"[yellow]Average 3Bet:[/yellow] {avg_3bet}%\n"
+        f"[yellow]Average Went to Showdown:[/yellow] {avg_wtsd}%\n"
         f"[yellow]Average Showdown Win:[/yellow] {avg_sd_win}%\n"
     )
     console.print(Panel(info_text, title="[bold magenta]Session Overview[/bold magenta]", border_style="magenta"))
@@ -368,7 +375,7 @@ def main():
         "--sort",
         type=str,
         default="Tightness Score",
-        help="Column to sort by: 'Tightness Score', 'Total Hands', 'VPIP (%)', 'PFR (%)', '3Bet (%)', or 'Showdown Win (%)'."
+        help="Column to sort by: 'Tightness Score', 'Total Hands', 'VPIP (%)', 'PFR (%)', '3Bet (%)', 'Went to Showdown (%)', 'Showdown Win (%)'."
     )
     parser.add_argument(
         "--filter",
