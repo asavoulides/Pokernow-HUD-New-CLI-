@@ -14,6 +14,7 @@ def print_overview_info(hands, stats):
     if stats:
         avg_vpip = round(sum(s["VPIP (%)"] for s in stats.values()) / len(stats), 2)
         avg_pfr = round(sum(s["PFR (%)"] for s in stats.values()) / len(stats), 2)
+        avg_2bet = round(sum(s["2Bet (%)"] for s in stats.values()) / len(stats), 2)
         avg_3bet = round(sum(s["3Bet (%)"] for s in stats.values()) / len(stats), 2)
         avg_sd_win = round(
             sum(s["Showdown Win (%)"] for s in stats.values()) / len(stats), 2
@@ -22,7 +23,7 @@ def print_overview_info(hands, stats):
             sum(s["Went to Showdown (%)"] for s in stats.values()) / len(stats), 2
         )
     else:
-        avg_vpip = avg_pfr = avg_3bet = avg_sd_win = avg_wtsd = 0
+        avg_vpip = avg_pfr = avg_2bet = avg_3bet = avg_sd_win = avg_wtsd = 0
 
     info_text = (
         f"[bold cyan]Overview:[/bold cyan]\n"
@@ -30,6 +31,7 @@ def print_overview_info(hands, stats):
         f"[yellow]Unique Players:[/yellow] {len(all_players)}\n"
         f"[yellow]Average VPIP:[/yellow] {avg_vpip}%\n"
         f"[yellow]Average PFR:[/yellow] {avg_pfr}%\n"
+        f"[yellow]Average 2Bet:[/yellow] {avg_2bet}%\n"
         f"[yellow]Average 3Bet:[/yellow] {avg_3bet}%\n"
         f"[yellow]Average Went to Showdown:[/yellow] {avg_wtsd}%\n"
         f"[yellow]Average Showdown Win:[/yellow] {avg_sd_win}%\n"
@@ -64,12 +66,13 @@ def display_stats(stats, numbered=False, sort_by="Tightness Score"):
         box=box.MINIMAL_DOUBLE_HEAD,
         title_style="bold yellow",
     )
-    table.add_column("Player ID", justify="left", style="bright_yellow", no_wrap=True)
+    table.add_column("Player Name", justify="left", style="bright_yellow", no_wrap=True)
     if numbered:
         table.add_column("Number", justify="center", style="white")
     table.add_column("Total Hands", justify="center")
     table.add_column("VPIP (%)", justify="center")
     table.add_column("PFR (%)", justify="center")
+    table.add_column("2Bet (%)", justify="center")
     table.add_column("3Bet (%)", justify="center")
     table.add_column("Went to Showdown (%)", justify="center")
     table.add_column("Showdown Win (%)", justify="center")
@@ -82,6 +85,7 @@ def display_stats(stats, numbered=False, sort_by="Tightness Score"):
         th_color = color_total_hands(stat["Total Hands"])
         vpip_color = color_aggression_stat(stat["VPIP (%)"])
         pfr_color = color_aggression_stat(stat["PFR (%)"])
+        twobet_color = color_aggression_stat(stat["2Bet (%)"])
         threebet_color = color_aggression_stat(stat["3Bet (%)"])
         wtsd_color = color_aggression_stat(stat["Went to Showdown (%)"])
         sd_win_color = color_showdown_win(stat["Showdown Win (%)"])
@@ -94,6 +98,7 @@ def display_stats(stats, numbered=False, sort_by="Tightness Score"):
             Text(str(stat["Total Hands"]), style=th_color),
             Text(str(stat["VPIP (%)"]), style=vpip_color),
             Text(str(stat["PFR (%)"]), style=pfr_color),
+            Text(str(stat["2Bet (%)"]), style=twobet_color),
             Text(str(stat["3Bet (%)"]), style=threebet_color),
             Text(str(stat["Went to Showdown (%)"]), style=wtsd_color),
             Text(str(stat["Showdown Win (%)"]), style=sd_win_color),
